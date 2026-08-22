@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Tooling caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Generated deliverables (models, plots, maps, history)
+artifacts/
+
+# Notebooks / scratch
+notebooks/
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store

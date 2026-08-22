@@ -1,0 +1,6 @@
+# Development / CI tooling (runtime deps live in requirements.txt)
+ruff>=0.6
+mypy>=1.10
+pytest>=8.0
+pandas-stubs
+types-tensorflow
