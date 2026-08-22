@@ -73,3 +73,7 @@ docs: TDD.md · ROADMAP.md · AGENTS.md
 ## Status
 
 All gates passed (see ROADMAP §5). Remaining human review item: visual confirmation that high-probability clusters on the overlay map intersect active plate boundaries.
+
+## License
+
+[MIT](./LICENSE)
