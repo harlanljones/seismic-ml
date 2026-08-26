@@ -1,0 +1,11 @@
+[Unit]
+Description=SeismicML scheduled model retrain (challenger bundle)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/dev/seismic-ml
+ExecStart=%h/dev/seismic-ml/.venv/bin/python -m src.jobs.retrain
+# Retrain writes a challenger bundle under artifacts/model_bundle; promotion is
+# gated by the AUC / train-val-gap check inside the module.

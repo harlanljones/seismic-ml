@@ -1,4 +1,10 @@
-"""Interactive Folium geospatial overlay map (workstream W7)."""
+"""Interactive Folium geospatial overlay map (workstream W7).
+
+The layer-data computation is delegated to :func:`build_layer_payload` in
+``src/serve/map_server.py`` (LIVE_APP_ROADMAP §5.2 faithful refactor) so the
+offline rendering stays the single source of truth shared with the live app.
+The rendered HTML output and visual semantics are unchanged.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +15,8 @@ import folium
 import numpy as np
 import pandas as pd
 from folium.plugins import HeatMap
+
+from src.serve.map_server import PRED_HEAT, TRAIN_HEAT, build_layer_payload
 
 if TYPE_CHECKING:
     from tensorflow.keras import Model
@@ -24,71 +32,39 @@ def generate_spatial_overlay_map(
 ) -> folium.Map:
     """Render an interactive Leaflet map of training density, predicted risk,
     and confusion-matrix verification markers over the test partition."""
-    preds_prob = model.predict(X_test_scaled).flatten()
-    preds_binary = (preds_prob >= 0.5).astype(int)
+    payload = build_layer_payload(grid_data, val_idx, X_test_scaled, y_test, model)
+    train_heatmap_data = payload["train_heatmap"]
+    pred_heatmap_data = payload["pred_heatmap"]
+    markers = payload["markers"]
 
-    test_slice = grid_data.iloc[val_idx:].copy().reset_index(drop=True)
-    test_slice["prob"] = preds_prob
-    test_slice["pred"] = preds_binary
-    test_slice["actual"] = y_test
-
+    test_slice = grid_data.iloc[val_idx:]
     center_lat = test_slice["lat_bin"].mean()
     center_lon = test_slice["lon_bin"].mean()
     fmap = folium.Map(
         location=[center_lat, center_lon], zoom_start=4, tiles="CartoDB dark_matter"
     )
 
-    train_heatmap_data = grid_data.iloc[:val_idx][
-        ["lat_bin", "lon_bin", "event_count"]
-    ].values.tolist()
     train_layer = folium.FeatureGroup(name="Historical Training Density")
-    HeatMap(
-        train_heatmap_data,
-        radius=12,
-        blur=10,
-        min_opacity=0.2,
-        gradient={0.2: "blue", 0.8: "cyan"},
-    ).add_to(train_layer)
+    HeatMap(train_heatmap_data, **TRAIN_HEAT).add_to(train_layer)
     train_layer.add_to(fmap)
 
-    pred_heatmap_data = test_slice[["lat_bin", "lon_bin", "prob"]].values.tolist()
     pred_heat_layer = folium.FeatureGroup(name="Predicted Risk Heatmap (Test Set)")
-    HeatMap(
-        pred_heatmap_data,
-        radius=16,
-        blur=14,
-        min_opacity=0.4,
-        gradient={0.4: "orange", 1.0: "red"},
-    ).add_to(pred_heat_layer)
+    HeatMap(pred_heatmap_data, **PRED_HEAT).add_to(pred_heat_layer)
     pred_heat_layer.add_to(fmap)
 
     marker_layer = folium.FeatureGroup(name="Model Verification Markers")
-    for _, row in test_slice.iterrows():
-        lat, lon = row["lat_bin"], row["lon_bin"]
-        prob = float(row["prob"])
-        gt = int(row["actual"])
-        pred = int(row["pred"])
-
-        if gt == 1 and pred == 1:
-            color, label = "#00FF00", "True Positive (Accurate Forecast)"
-        elif gt == 0 and pred == 1:
-            color, label = "#FFA500", "False Positive (False Alarm)"
-        elif gt == 1 and pred == 0:
-            color, label = "#FF0000", "False Negative (Missed Event)"
-        else:
-            continue
-
+    for m in markers:
         popup_html = (
-            f"<b>Status:</b> {label}<br>"
-            f"<b>Predicted Risk:</b> {prob:.2%}<br>"
-            f"<b>Actual M>=4.5:</b> {bool(gt)}"
+            f"<b>Status:</b> {m['label']}<br>"
+            f"<b>Predicted Risk:</b> {m['prob']:.2%}<br>"
+            f"<b>Actual M>=4.5:</b> {bool(m['gt'])}"
         )
         folium.CircleMarker(
-            location=[lat, lon],
-            radius=5 + prob * 7,
-            color=color,
+            location=[m["lat"], m["lon"]],
+            radius=5 + m["prob"] * 7,
+            color=m["color"],
             fill=True,
-            fill_color=color,
+            fill_color=m["color"],
             fill_opacity=0.8,
             popup=popup_html,
         ).add_to(marker_layer)

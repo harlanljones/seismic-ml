@@ -1,0 +1,10 @@
+[Unit]
+Description=SeismicML live nowcast (forecast from latest model bundle)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/dev/seismic-ml
+ExecStart=%h/dev/seismic-ml/.venv/bin/python -m src.jobs.nowcast
+# nowcast consumes artifacts/model_bundle/latest (the promoted challenger).
