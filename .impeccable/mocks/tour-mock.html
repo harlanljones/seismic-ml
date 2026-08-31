@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SeismicML · Live Forecast Tour</title>
+<!-- World = product mood selection mockup. Switch via ?world=observatory|editorial|restrained -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+:root{
+  --bg:#07090d;
+  --panel:rgba(13,17,23,.86);
+  --panel-solid:#0d1117;
+  --panel-border:rgba(255,255,255,.08);
+  --ink:#e8edf2;
+  --muted:#8b96a4;
+  --accent:#ff5c39;
+  --accent-2:#39d0ff;
+  --good:#2bd97a;
+  --warn:#ffb02e;
+  --bad:#ff4d5e;
+  --font-ui:'Space Grotesk',system-ui,sans-serif;
+  --font-mono:'IBM Plex Mono',monospace;
+  --font-display:'Space Grotesk',system-ui,sans-serif;
+  --radius:10px;
+  --shadow:0 18px 50px rgba(0,0,0,.5);
+  --map-tiles:url("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png");
+}
+body.world-editorial{
+  --bg:#f6f2ea;
+  --panel:rgba(255,253,248,.92);
+  --panel-solid:#fffdf8;
+  --panel-border:rgba(28,23,18,.14);
+  --ink:#1c1712;
+  --muted:#6f6659;
+  --accent:#dd4326;
+  --accent-2:#1c6bd4;
+  --good:#1d7a4f;
+  --warn:#b97a16;
+  --bad:#c62f3f;
+  --font-ui:'Inter',system-ui,sans-serif;
+  --font-mono:'IBM Plex Mono',monospace;
+  --font-display:'Instrument Serif',Georgia,serif;
+  --radius:14px;
+  --shadow:0 28px 80px rgba(60,40,20,.22);
+  --map-tiles:url("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png");
+}
+body.world-restrained{
+  --bg:#fbfbfa;
+  --panel:#ffffff;
+  --panel-solid:#ffffff;
+  --panel-border:#e2ded6;
+  --ink:#191917;
+  --muted:#8b877e;
+  --accent:#e0572d;
+  --accent-2:#191917;
+  --good:#3d7a4f;
+  --warn:#a97b12;
+  --bad:#b2323f;
+  --font-ui:'Inter',system-ui,sans-serif;
+  --font-mono:'IBM Plex Mono',monospace;
+  --font-display:'Inter',system-ui,sans-serif;
+  --radius:6px;
+  --shadow:0 1px 2px rgba(0,0,0,.04);
+  --map-tiles:url("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png");
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:var(--font-ui);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+/* ---------- top bar ---------- */
+.topbar{
+  height:56px;flex:0 0 auto;
+  display:flex;align-items:center;gap:18px;
+  padding:0 20px;
+  border-bottom:1px solid var(--panel-border);
+  background:var(--panel-solid);position:relative;z-index:1200;
+}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.01em;font-size:15px}
+.brand .mark{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;font-size:11px;font-weight:700}
+body.world-editorial .brand .mark{background:var(--accent);color:#fff}
+body.world-observatory .brand .mark{background:var(--accent);color:#fff}
+body.world-restrained .brand .mark{background:var(--accent);color:#fff}
+.brand .sub{font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.04em;padding-left:2px}
+.chips{display:flex;gap:8px;align-items:center;margin-left:6px;flex-wrap:nowrap;overflow:hidden}
+.chip{
+  font-family:var(--font-mono);font-size:10.5px;letter-spacing:.04em;
+  padding:5px 10px;border-radius:999px;white-space:nowrap;
+  border:1px solid var(--panel-border);color:var(--muted);background:var(--panel);
+}
+.chip b{color:var(--ink);font-weight:600}
+.chip.live{border-color:var(--good);color:var(--good)}
+.chip.live::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--good);margin-right:6px;vertical-align:1px;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.spacer{flex:1}
+.stage-label{font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+.ghost-btn{
+  border:1px solid var(--panel-border);background:var(--panel);color:var(--ink);
+  font-family:var(--font-ui);font-size:12px;font-weight:500;border-radius:var(--radius);
+  padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:7px;
+}
+/* ---------- stage ---------- */
+.stage{position:relative;flex:1;min-height:0}
+#map{position:absolute;inset:0}
+.leaflet-container{background:var(--bg)!important;font-family:var(--font-ui)}
+/* ---------- beat rail (left, vertical) ---------- */
+.rail{
+  position:absolute;left:18px;top:50%;transform:translateY(-50%);z-index:1150;
+  display:flex;flex-direction:column;gap:6px;align-items:center;
+}
+.rail .dot{
+  width:10px;height:10px;border-radius:50%;border:1.5px solid var(--muted);
+  background:transparent;position:relative;transition:all .25s;
+}
+.rail .dot.done{border-color:var(--good)}
+.rail .dot.done::after{content:"";position:absolute;inset:2px;border-radius:50%;background:var(--good)}
+.rail .dot.active{width:16px;height:16px;border-color:var(--accent);background:var(--accent)}
+.rail .dot.active::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid var(--accent);animation:ripple 2s infinite}
+@keyframes ripple{0%{transform:scale(1);opacity:.7}100%{transform:scale(2.2);opacity:0}}
+.rail .link{width:1.5px;height:14px;background:var(--panel-border)}
+/* ---------- beat card ---------- */
+.card{
+  position:absolute;right:20px;top:18px;width:min(350px,34vw);z-index:1150;
+  background:var(--panel);border:1px solid var(--panel-border);border-radius:var(--radius);
+  box-shadow:var(--shadow);padding:20px 22px;
+  backdrop-filter:blur(8px);
+}
+.card .kicker{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.card .kicker .num{
+  font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;color:var(--accent);
+  border:1px solid var(--accent);border-radius:5px;padding:3px 7px;font-weight:600;
+}
+.card .kicker .bstag{font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.card h1{font-family:var(--font-display);font-size:26px;line-height:1.08;font-weight:600;letter-spacing:-.01em;margin-bottom:10px}
+body.world-editorial .card h1{font-weight:400;font-size:30px}
+.card .hint{font-size:12.5px;line-height:1.55;color:var(--muted)}
+.card .hint b{color:var(--ink);font-weight:600}
+.card .signals{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.sig{border:1px solid var(--panel-border);border-radius:var(--radius);padding:10px 12px;display:flex;flex-direction:column;gap:2px;background:var(--panel-solid)}
+.sig .k{font-family:var(--font-mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.sig .v{font-family:var(--font-mono);font-size:15px;font-weight:600;color:var(--ink)}
+.sig .v small{color:var(--muted);font-weight:400;font-size:10px}
+.card .legend{display:flex;gap:12px;margin-top:14px;padding-top:12px;border-top:1px solid var(--panel-border);flex-wrap:wrap}
+.legend .item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
+.legend .sw{width:9px;height:9px;border-radius:3px;display:inline-block}
+.card .nav{display:flex;align-items:center;justify-content:space-between;margin-top:16px;gap:10px}
+.card .nav .cta{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:8px;
+  background:var(--accent);color:#fff;border:none;border-radius:var(--radius);
+  font-family:var(--font-ui);font-size:13px;font-weight:600;padding:11px 16px;cursor:pointer;
+}
+.card .nav .back{
+  border:1px solid var(--panel-border);background:transparent;color:var(--muted);
+  font-family:var(--font-mono);font-size:11px;padding:10px 14px;border-radius:var(--radius);cursor:pointer;
+}
+
+/* ---------- dashboard strand (bottom) ---------- */
+.dash{
+  position:absolute;left:24px;right:24px;bottom:18px;z-index:1150;
+  background:var(--panel);border:1px solid var(--panel-border);border-radius:var(--radius);
+  box-shadow:var(--shadow);backdrop-filter:blur(8px);
+  display:grid;grid-template-columns:230px 1fr 300px;gap:18px;padding:14px 18px;
+  align-items:center;
+}
+.dash .seg{display:flex;flex-direction:column;gap:7px}
+.dash .seg-label{font-family:var(--font-mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.threshold{display:flex;align-items:center;gap:12px}
+.threshold input[type=range]{flex:1;accent-color:var(--accent);height:4px}
+.threshold .val{font-family:var(--font-mono);font-size:15px;font-weight:600;color:var(--accent);min-width:44px;text-align:right}
+.stat-row{display:flex;gap:16px;align-items:center}
+.stat .k{font-family:var(--font-mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.stat .v{font-family:var(--font-mono);font-size:16px;font-weight:600}
+.stat .v.up{color:var(--good)} .stat .v.mid{color:var(--warn)} .stat .v.warn{color:var(--bad)}
+.toplist{display:flex;flex-direction:column;gap:5px}
+.trow{display:flex;align-items:center;gap:8px;font-size:11.5px}
+.trow .r{width:16px;font-family:var(--font-mono);color:var(--muted);font-size:10px}
+.trow .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+.trow .bar{width:64px;height:5px;background:var(--panel-border);border-radius:3px;overflow:hidden}
+.trow .bar i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.trow .pv{font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--accent);width:46px;text-align:right}
+/* src bottom-left mini legend on map */
+.maplegend{
+  position:absolute;left:18px;bottom:18px;z-index:1150;
+  font-family:var(--font-mono);font-size:10px;color:var(--muted);
+  display:flex;gap:14px;align-items:center;
+  background:var(--panel);border:1px solid var(--panel-border);border-radius:999px;
+  padding:8px 14px;letter-spacing:.03em;
+}
+.maplegend .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:-1px}
+.leaflet-control-attribution{opacity:.5;font-size:9px!important}
+</style>
+</head>
+<body class="world-observatory">
+<header class="topbar">
+  <div class="brand">
+    <span class="mark">◢</span>
+    <span>SeismicML</span>
+    <span class="sub">FORECAST SYSTEM</span>
+  </div>
+  <div class="chips">
+    <span class="chip"><b>Model</b> 7f3a91c-17246…</span>
+    <span class="chip"><b>Window</b> 2026-08-24 → 2026-08-31</span>
+    <span class="chip live"><b>LIVE</b></span>
+    <span class="chip"><b>M≥4.5</b> · 7-day horizon</span>
+  </div>
+  <div class="spacer"></div>
+  <span class="stage-label">Map Stage · Beat 3/5</span>
+  <button class="ghost-btn">⟳ Refresh</button>
+</header>
+
+<main class="stage" id="stage">
+  <div id="map"></div>
+
+  <div class="rail" id="rail"></div>
+
+  <div class="maplegend" id="maplegend"></div>
+
+  <section class="card" id="beatcard">
+    <div class="kicker">
+      <span class="num" id="beatnum">BEAT 3 / 5</span>
+      <span class="bstag" id="beattag">Prediction</span>
+    </div>
+    <h1 id="beathead">The Forecast</h1>
+    <p class="hint" id="beathint">
+      For every 2° cell, the model reads <b>30 days of precursors</b> — event
+      count, depth, azimuthal gap, signal strength — and answers one question:
+      <b>M≥4.5 in the next 7 days?</b>
+    </p>
+    <div class="signals" id="signals"></div>
+    <div class="legend" id="beatlegend"></div>
+    <div class="nav">
+      <button class="back" id="backbtn">← Back</button>
+      <button class="cta" id="ctabtn">Beat 4 — The Receipts →</button>
+    </div>
+  </section>
+
+  <section class="dash" id="dash">
+    <div class="seg">
+      <span class="seg-label">Alert threshold</span>
+      <div class="threshold">
+        <input type="range" id="thr" min="0" max="100" value="50" />
+        <span class="val" id="thrval">50%</span>
+      </div>
+    </div>
+    <div class="seg">
+      <span class="seg-label" id="scorelabel">Model scorecard — test partition</span>
+      <div class="stat-row" id="scorecard"></div>
+    </div>
+    <div class="seg">
+      <span class="seg-label" id="toplabel">Highest risk cells</span>
+      <div class="toplist" id="toplist"></div>
+    </div>
+  </section>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script>
+(function(){
+  "use strict";
+  var params = new URLSearchParams(location.search);
+  var world = params.get("world") || "observatory";
+  document.body.className = "world-" + world;
+
+  // ---- mock forecast data (schema-mirrors forecast.json features) ----
+  var CELLS = [
+    [35.0,-136.0,0.42],[36.0,-135.0,0.38],[36.0,-141.0,0.51],[37.0,-139.0,0.47],
+    [38.0,-143.0,0.45],[39.0,-144.0,0.52],[38.0,-140.0,0.44],[20.0,-125.0,0.40],
+    [39.0,-127.0,0.43],[40.0,-125.0,0.46],[35.0,-123.0,0.41],[38.0,-122.0,0.44],
+    [33.0,-118.0,0.47],[31.0,-115.0,0.49],[34.0,-117.0,0.45],[29.0,-111.0,0.38],
+    [24.0,-110.0,0.52],[23.0,-107.0,0.48],[19.0,-104.0,0.46],[17.0,-100.0,0.42],
+    [21.0,-106.0,0.5],[13.0,-90.0,0.55],[14.0,-91.0,0.52],[12.0,-87.0,0.49],
+    [9.0,-84.0,0.47],[-1.0,-80.0,0.44],[0.0,-78.0,0.5],[-2.0,-77.0,0.51],
+    [-7.0,-80.0,0.46],[-15.0,-76.0,0.55],[-17.0,-71.0,0.61],[-19.0,-70.0,0.58],
+    [-22.0,-69.0,0.62],[-24.0,-70.0,0.6],[-27.0,-71.0,0.57],[-34.0,-72.0,0.53],
+    [-37.0,-74.0,0.5],[-40.0,-74.0,0.47],[35.0,140.0,0.68],[36.0,141.0,0.66],
+    [37.0,142.0,0.63],[38.0,142.0,0.61],[39.0,143.0,0.59],[40.0,144.0,0.57],
+    [41.0,142.0,0.62],[43.0,145.0,0.6],[44.0,146.0,0.58],[45.0,150.0,0.55],
+    [46.0,152.0,0.53],[52.0,158.0,0.56],[54.0,160.0,0.56],[55.0,162.0,0.54],
+    [57.0,163.0,0.51],[60.0,163.0,0.5],[-6.0,130.0,0.52],[-7.0,128.0,0.55],
+    [-8.0,126.0,0.53],[-9.0,125.0,0.51],[-2.0,140.0,0.54],[0.0,138.0,0.56],
+    [2.0,128.0,0.53],[4.0,126.0,0.5],[-9.0,160.0,0.55],[-11.0,162.0,0.58],
+    [-12.0,166.0,0.56],[-14.0,167.0,0.57],[-16.0,168.0,0.6],[-20.0,174.0,0.58],
+    [-22.0,177.0,0.56],[-26.0,-179.0,0.54],[35.0,-30.0,0.4],[38.0,-25.0,0.42],
+    [36.0,-22.0,0.44],[-15.0,32.0,0.45],[-14.0,34.0,0.42],[-17.0,36.0,0.44]
+  ];
+  var heatPts = CELLS.map(function(c){ return [c[0]+1, c[1]+1, c[2]]; });
+
+  // ---- map ----
+  var tiles = {
+    observatory: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+    editorial:   "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+    restrained:  "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+  };
+  var map = L.map("map",{zoomControl:true, attributionControl:true}).setView([14, -30], 2);
+  L.tileLayer(tiles[world],{maxZoom:19, attribution:"&copy; CartoDB | USGS"}).addTo(map);
+  if (typeof L.heatLayer !== "undefined") {
+    L.heatLayer(heatPts,{radius:26, blur:22, minOpacity:0.35,
+      gradient: world==="restrained"?{0.4:"#e0572d",1:"#8f1c00"}:{0.4:"#ffb02e",0.7:"#ff5c39",1:"#d61f4c"}
+    }).addTo(map);
+  }
+  // verification markers (TP/FP/FN)
+  var mk = { "#2bd97a":[[37,142],[16,168],[-17,71]], "#ffb02e":[[40,144],[9,84],[-12,166]],
+             "#ff4d5e":[[38,143],[-14,167],[57,163]] };
+  Object.keys(mk).forEach(function(color){
+    mk[color].forEach(function(p){
+      L.circleMarker([p[0],p[1]],{radius:4+1,color:color,weight:2,fillColor:color,fillOpacity:.85}).addTo(map);
+    });
+  });
+
+  // ---- beat rail ----
+  var rail = document.getElementById("rail");
+  var labels=["Watch","Signal","Forecast","Receipts"];
+  for(var i=0;i<5;i++){
+    var d=document.createElement("span");
+    d.className="dot"+(i<2?" done":"")+(i===2?" active":"");
+    rail.appendChild(d);
+    if(i<4){var l=document.createElement("span");l.className="link";rail.appendChild(l);}
+  }
+  (function(){var l=document.createElement("div");l.className="link";rail.appendChild(l);})();
+
+  // ---- scorecard ----
+  var sc=["Acc 76.7 up","t/v gap 1.1 up","TP 28 up","FP 41 mid","FN 19 warn","HR @.5 59.6 mid"];
+  var scEl=document.getElementById("scorecard");
+  sc.forEach(function(s){var p=s.split(" ");var el=document.createElement("div");el.className="stat";
+    el.innerHTML="<span class=\"k\">"+p[0]+"</span><span class=\"v "+ (p[2]||'up') +"\">"+p[1]+"</span>";
+    scEl.appendChild(el);});
+
+  // ---- top list ----
+  var tops=[["Tōhoku, JP",68.2],["Kuril Trench, RU",62.7],["Baja California, MX",57.1],["Sulawesi, ID",52.3],["Kamchatka, RU",48.6]];
+  var tl=document.getElementById("toplist");
+  tops.forEach(function(t,i){var el=document.createElement("div");el.className="trow";
+    el.innerHTML="<span class=\"r\">"+(i+1)+"</span><span class=\"nm\">"+t[0]+"</span><div class=\"bar\"><i style=\"width:"+Math.round(t[1])+"%\"></i></div><span class=\"pv\">"+t[1].toFixed(1)+"%</span>";
+    tl.appendChild(el);});
+
+  // ---- signals / legend ----
+  var sgs=[["Peak risk","68.2%",null],["Alert cells","37",null],["Coverage","4,112 cells",null],["Horizon","7 d",null]];
+  var sg=document.getElementById("signals");
+  sgs.forEach(function(s){var el=document.createElement("div");el.className="sig";
+    el.innerHTML="<span class=\"k\">"+s[0]+"</span><span class=\"v\">"+s[1]+"<small>"+(s[2]||"")+"</small></span>";
+    sg.appendChild(el);});
+  var lg=[["#ff5c39","predicted ≥ .5"],["#ffb02e","pending verify"],["#39d0ff","recent M≥2.5"]];
+  var lgel=document.getElementById("beatlegend");
+  lg.forEach(function(l){var el=document.createElement("span");el.className="item";
+    el.innerHTML="<span class=\"sw\" style=\"background:"+l[0]+"\"></span>"+l[1];lgel.appendChild(el);});
+
+  // ---- world-specific tweaks ----
+  document.body.style.fontFamily = getComputedStyle(document.body).getPropertyValue("--font-ui");
+  document.querySelectorAll(".sig .v,.stat .v,.trow .pv").forEach(function(el){
+    el.style.fontFamily = getComputedStyle(document.body).getPropertyValue("--font-mono");
+  });
+  // threshold slider
+  var thr=document.getElementById("thr"), thrv=document.getElementById("thrval");
+  thr.addEventListener("input",function(){thrv.textContent=thr.value+"%";});
+})();
+</script>
+
+</body>
+</html>
+
+}

@@ -71,6 +71,42 @@ def forecast_to_geojson(forecast: dict) -> dict:
     }
 
 
+def _make_markers(test_slice: pd.DataFrame) -> list[dict]:
+    """Build confusion-matrix markers from a test-partition DataFrame.
+
+    Mirrors map.py semantics exactly: TP green / FP orange / FN red;
+    TN emits no marker (suppressed to avoid clutter). Expects columns
+    ``lat_bin``, ``lon_bin``, ``prob``, ``pred``, ``actual``.
+    """
+    markers: list[dict] = []
+    for _, row in test_slice.iterrows():
+        lat = float(row["lat_bin"])
+        lon = float(row["lon_bin"])
+        prob = float(row["prob"])
+        gt = int(row["actual"])
+        pred = int(row["pred"])
+
+        if gt == 1 and pred == 1:
+            color, label = "#00FF00", "True Positive (Accurate Forecast)"
+        elif gt == 0 and pred == 1:
+            color, label = "#FFA500", "False Positive (False Alarm)"
+        elif gt == 1 and pred == 0:
+            color, label = "#FF0000", "False Negative (Missed Event)"
+        else:
+            continue
+
+        markers.append(
+            {
+                "lat": lat,
+                "lon": lon,
+                "prob": prob,
+                "gt": gt,
+                "pred": pred,
+                "color": color,
+                "label": label,
+            }
+        )
+    return markers
 def build_layer_payload(
     grid_data: pd.DataFrame,
     val_idx: int,
@@ -109,34 +145,7 @@ def build_layer_payload(
         test_slice[["lat_bin", "lon_bin", "prob"]].values.tolist()
     )
 
-    markers: list[dict] = []
-    for _, row in test_slice.iterrows():
-        lat = float(row["lat_bin"])
-        lon = float(row["lon_bin"])
-        prob = float(row["prob"])
-        gt = int(row["actual"])
-        pred = int(row["pred"])
-
-        if gt == 1 and pred == 1:
-            color, label = "#00FF00", "True Positive (Accurate Forecast)"
-        elif gt == 0 and pred == 1:
-            color, label = "#FFA500", "False Positive (False Alarm)"
-        elif gt == 1 and pred == 0:
-            color, label = "#FF0000", "False Negative (Missed Event)"
-        else:
-            continue
-
-        markers.append(
-            {
-                "lat": lat,
-                "lon": lon,
-                "prob": prob,
-                "gt": gt,
-                "pred": pred,
-                "color": color,
-                "label": label,
-            }
-        )
+    markers: list[dict] = _make_markers(test_slice)
 
     return {
         "train_heatmap": train_heatmap,
