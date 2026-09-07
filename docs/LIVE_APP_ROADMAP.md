@@ -9,10 +9,12 @@
 
 ## 0. Status
 
-- Phase A: not started — contract amendment in flight (§4.1).
-- Phase B: not started (blocked on A).
-- Phase C: not started (blocked on A; B for the live data loop).
-- Phase D: not started (blocked on C).
+> **Note:** The project is fully implemented. This roadmap is being recorded retroactively to reflect the architecture as-built.
+
+- Phase A: **Completed** — inference bundle, `load_bundle`/`predict` in `src/inference.py`.
+- Phase B: **Completed** — live data loop via `src/jobs/nowcast.py`.
+- Phase C: **Completed** — FastAPI serving surface (`src/serve/app.py`) with Jinja2 + Leaflet frontend.
+- Phase D: **Completed** — model lifecycle with challenge/promote/rollback (`src/jobs/retrain.py`).
 
 ---
 
@@ -420,14 +422,4 @@ sections below — restating them here as the authoritative summary:
    gains `fastapi`, `uvicorn`, `jinja2`, `joblib` (§3 Phase C, §2, §8).
 7. **Bundle versioning** — `run_id="<git_short_sha>-<epoch>"`, `latest` symlink,
    prior-3 retained, `retrain.timer`@03:00 / `nowcast.timer`@06:00 (§5.3.3).
-
----
-
-1. **Host topology** (§5.1) — **RESOLVED**: default ACCEPTED (local
-   `systemd --user` timers for A+B+D, C behind `uvicorn`+Tailscale as alpha,
-   VPS later). See §5.1 and "Ratified decisions" above.
-2. **W6 map refactor** (§5.2) — **RESOLVED (authorized)**: extract the
-   layer-payload builder into `src/serve/map_server.py`; `src/viz/map.py`
-   remains the offline caller. See §5.2 and "Ratified decisions" above.
-3. **git workflow** — **CONFIRMED**: commit to
-   `harlanljones/hj-481-develop-a-roadmap-for-a-live-app`, per-phase branches.
+8. **Git workflow** — per-phase branches on `harlanljones/hj-481-develop-a-roadmap-for-a-live-app`.
